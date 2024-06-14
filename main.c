@@ -7,6 +7,8 @@
 #include "driver/uart.h"
 #include "driver/gpio.h"
 
+#include "driver/sdmmc_host.h"
+
 #define BUF_SIZE (1024)
 
 
@@ -29,15 +31,21 @@ static void uart_task()
 
     uint8_t *data = (uint8_t*)malloc(BUF_SIZE);
 
+    char* command_data = "$PMTK220,1000*1F\r\n";
+
+
+    uart_write_bytes(UART_NUM_1, command_data, 64);
+
     while (1)
     {
-        const int len = uart_read_bytes(UART_NUM_1, data, BUF_SIZE, 10);
+        const int len = uart_read_bytes(UART_NUM_1, data, BUF_SIZE, 2);
         if (len>0)
         {
             data[len] = 0;
-            uart_write_bytes(UART_NUM_1, (const char *)data, len);
+            
             printf("%s\n", (const char *)data);
-            vTaskDelay(100);
+            printf("\n");
+            
         }
     }
 
@@ -47,5 +55,6 @@ static void uart_task()
 
 void app_main(void)
 {
-    uart_task();
+    
+    //uart_task();
 }
