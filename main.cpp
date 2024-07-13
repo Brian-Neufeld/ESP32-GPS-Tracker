@@ -160,13 +160,13 @@ void setup() {
 
   
 
-  delay(2000);
+  delay(5000);
 
   GPS_Module.begin(9600, SERIAL_8N1, 3, 2);
 
   GPS_Module.println("$PMTK314,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0*29<CR><LF>");
 
-  //GPS_Module.println("$PMTK220,100*2F<CR><LF>");
+  GPS_Module.println("$PMTK220,100*2F<CR><LF>");
 
   myspi.begin(8,9,10,4);
  
@@ -224,15 +224,16 @@ void loop() {
     delay(100);*/
   
     myFile = SD.open("/test.txt", FILE_APPEND);
-    //while (GPS_Module.available() > 0)
+    while (GPS_Module.available() > 0)
       //Serial.println(GPS_Module.read());
       //GPS_String += char(GPS_Module.read());
-
-    //Serial.println(GPS_String); 
-    Serial.println("Writing to test.txt...");
-    myFile.println("testing 3, 2, 1.");
+      myFile.print(char(GPS_Module.read()));
+      //Serial.print(char(GPS_Module.read()));
+    
+    //Serial.println("Writing to test.txt...");
+    //myFile.println("\n");
     myFile.close();
-    delay(1000);
+    delay(100);
   
   
 }
