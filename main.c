@@ -22,6 +22,9 @@
 
 char data[EXAMPLE_MAX_CHAR_SIZE];
 
+char GGA_data [15][15];
+char RMC_data [14][15];
+
 static const char *TAG = "example";
 
 #define MOUNT_POINT "/sdcard"
@@ -31,9 +34,15 @@ static const char *TAG = "example";
 #define PIN_NUM_CLK   8
 #define PIN_NUM_CS    4
 
+bool OutputGLL = false;
+bool OutputRMC = true;
+bool OutputVTG = false;
+bool OutputGGA = false;
+bool OutputGSA = false;
+bool OutputGSV = false;
+
 static esp_err_t s_example_write_file(const char *path, char *data)
 {
-    ESP_LOGI(TAG, "Opening file %s", path);
     FILE *f = fopen(path, "a");
     if (f == NULL) {
         ESP_LOGE(TAG, "Failed to open file for writing");
@@ -44,6 +53,22 @@ static esp_err_t s_example_write_file(const char *path, char *data)
     ESP_LOGI(TAG, "File written");
 
     return ESP_OK;
+}
+
+int nmea0183_checksum(char *nmea_data)
+{
+    int crc = 0;
+    int i;
+    
+    for (i = 1; i < strlen(nmea_data)-5; i ++) {
+        crc ^= nmea_data[i];
+    }
+
+    return crc;
+}
+
+void intToHexString(int num, char *hexStr) {
+    sprintf(hexStr, "%x", num);  // Convert integer to hex string
 }
 
 static void uart_task()
@@ -65,9 +90,24 @@ static void uart_task()
 
     uint8_t *GPS_data = (uint8_t*)malloc(BUF_SIZE);
 
-    char* GPS_rate_command = "$PMTK220,100*2F\r\n";
+    char* GPS_rate_command_fast = "$PMTK220,100*2F\r\n";
 
-    char* GPS_NMEA_sentence_command = "$PMTK314,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0*29\r\n";
+    char* GPS_rate_command_slow = "$PMTK220,1000*1F\r\n";
+
+    char GPS_NMEA_sentence_command[] = "$PMTK314,0,1,1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0*00\r\n"; 
+
+    char nmea_sentence_checksum;
+    
+    nmea_sentence_checksum = nmea0183_checksum(GPS_NMEA_sentence_command);
+
+    char hexString[2];
+
+    intToHexString(nmea_sentence_checksum, hexString);
+
+    GPS_NMEA_sentence_command[47] = hexString[0];
+    GPS_NMEA_sentence_command[48] = hexString[1];
+    
+    printf("New command: %s", GPS_NMEA_sentence_command);
 
     char* GPS_erase_flash = "$PMTK184,1*22\r\n";
 
@@ -75,34 +115,118 @@ static void uart_task()
     uart_write_bytes(UART_NUM_1, (const char*)GPS_NMEA_sentence_command, 52);
     uart_wait_tx_done(UART_NUM_1, 1000);
 
-    
-
-    uart_write_bytes(UART_NUM_1, (const char*)GPS_rate_command, 18);
+    uart_write_bytes(UART_NUM_1, (const char*)GPS_rate_command_slow, 18);
     uart_wait_tx_done(UART_NUM_1, 1000);
 
-    
+    //uart_write_bytes(UART_NUM_1, (const char*)GPS_erase_flash, 16);
+    //uart_wait_tx_done(UART_NUM_1, 1000);
 
-    uart_write_bytes(UART_NUM_1, (const char*)GPS_erase_flash, 16);
-    uart_wait_tx_done(UART_NUM_1, 1000);
-
-    
 
     while (1)
-    {
-        const int len = uart_read_bytes(UART_NUM_1, GPS_data, BUF_SIZE, 2);
+    {   
+        int len = uart_read_bytes(UART_NUM_1, GPS_data, BUF_SIZE, 2);
+
+        
+
         if (len>0)
-        {
-            GPS_data[len] = 0;
+        { 
+            GPS_data[len] = '\0';
+
+            printf("%s", GPS_data);
+        
+            int j = 0;
+            int k = 0;
+
+            for (size_t i = 0; i < len; i++)
+            {
+
+                if (j < 15)
+                {
+                    if ((GPS_data[i]) == '\r')
+                    {
+                        ;
+                    }
+                    else if ((GPS_data[i]) == '\n')
+                    {
+                        GGA_data[j][k] = '\0';
+                        j++;
+                        k = 0;
+                    }
+                    else if ((GPS_data[i]) != ',')
+                    {   
+                        GGA_data[j][k] = GPS_data[i];
+                        k++;
+                    }
+                    else
+                    {
+                        GGA_data[j][k] = '\0';
+                        j++;
+                        k = 0;
+                    }
+                    
+
+                }
+                else if (j >= 15)
+                {
+                    if ((GPS_data[i]) == ' ')
+                    {
+                        ;
+                    }
+                    else if ((GPS_data[i]) == '\n')
+                    {
+                        RMC_data[j-15][k] = '\0';
+                        j++;
+                        k = 0;
+                    }
+                    if ((GPS_data[i]) != ',')
+                    {   
+                        RMC_data[j-15][k] = GPS_data[i];
+                        k++;
+                    }
+                    else
+                    {
+                        RMC_data[j-15][k] = '\0';
+                        j++;
+                        k = 0;
+                    }
+                }
+            }
             
-            printf("%s\n", (const char *)data);
-            printf("\n");
+            /*printf("%s", "New Data:");
+            
+            for (size_t i = 0; i < 15; i++)
+            {
+                printf("%s ", GGA_data[i]);
+            }
+            
+            for (size_t i = 0; i < 13; i++)
+            {
+                printf("%s ", RMC_data[i]);
+            }
+            
+               
+            printf("\n");  */
+            
 
-            const char *file_hello = MOUNT_POINT"/DATA.txt";
 
-            snprintf(data, EXAMPLE_MAX_CHAR_SIZE, "%s", GPS_data);
-            s_example_write_file(file_hello, data);
+            if ((RMC_data[3]) == 'A')
+            {
+                if ((GPS_data[1]) == 'G')
+                {
+                    printf("%s\n", GPS_data);
+
+                    const char *file_hello = MOUNT_POINT"/DATA.txt";
+
+                    snprintf(data, EXAMPLE_MAX_CHAR_SIZE, "%s", GPS_data);
+                    s_example_write_file(file_hello, data);
+                }
+            }
+
             
         }
+    
+            
+        
     }
 
     uart_flush(UART_NUM_1);
@@ -165,7 +289,6 @@ void SD_Setup(void)
     ESP_LOGI(TAG, "Filesystem mounted");
 
     sdmmc_card_print_info(stdout, card);
-
 
 }
 
